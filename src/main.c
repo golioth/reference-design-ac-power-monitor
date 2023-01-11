@@ -5,7 +5,7 @@
  */
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(golioth_rd_template, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(golioth_powermonitor, LOG_LEVEL_DBG);
 
 #include <net/golioth/system_client.h>
 #include <samples/common/net_connect.h>
@@ -64,7 +64,7 @@ void main(void)
 {
 	int err;
 
-	LOG_DBG("Start Reference Design Template sample");
+	LOG_DBG("Start Power Monitor Reference Design");
 
 	/* Get system thread id so loop delay change event can wake main */
 	_system_thread = k_current_get();
