@@ -199,7 +199,6 @@ static void sensor_work_handler(struct k_work *work) {
 	 * different.
 	 */
 	push_adc_to_golioth(ch0_data.val1, ch1_data.val1);
-	app_state_update_actual();
 }
 
 K_WORK_DEFINE(sensor_work, sensor_work_handler);
