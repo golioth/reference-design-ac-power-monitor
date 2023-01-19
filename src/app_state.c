@@ -8,17 +8,18 @@
 LOG_MODULE_REGISTER(app_state, LOG_LEVEL_DBG);
 
 #include <net/golioth/system_client.h>
-#include <zephyr/data/json.h>
-#include "json_helper.h"
 
 #include "app_state.h"
 #include "app_work.h"
+#include <qcbor/qcbor.h>
+#include <qcbor/qcbor_decode.h>
+#include <qcbor/qcbor_spiffy_decode.h>
 
 #define LIVE_RUNTIME_FMT "{\"live_runtime\":{\"ch0\":%lld,\"ch1\":%lld}"
 #define CUMULATIVE_RUNTIME_FMT ",\"cumulative\":{\"ch0\":%lld,\"ch1\":%lld}}"
 #define DEVICE_STATE_FMT LIVE_RUNTIME_FMT "}"
 #define DEVICE_STATE_FMT_CUMULATIVE LIVE_RUNTIME_FMT CUMULATIVE_RUNTIME_FMT
-#define DEVICE_DESIRED_FMT "{\"example_int0\":%d,\"example_int1\":%d}"
+#define DESIRED_RESET_KEY "reset_cumulative"
 
 uint32_t _example_int0 = 0;
 uint32_t _example_int1 = 1;
@@ -45,23 +46,43 @@ void app_state_init(struct golioth_client* state_client) {
 }
 
 static int reset_desired(void) {
-	char sbuf[strlen(DEVICE_DESIRED_FMT)+8]; /* small bit of extra space */
-	snprintk(sbuf, sizeof(sbuf), DEVICE_DESIRED_FMT, -1, -1);
+
+	QCBOREncodeContext encode_ctx;
+	UsefulBuf_MAKE_STACK_UB(useful_buf, 48);
+	QCBOREncode_Init(&encode_ctx, useful_buf);
+	QCBOREncode_OpenMap(&encode_ctx);
+	QCBOREncode_AddBoolToMap(&encode_ctx, DESIRED_RESET_KEY, false);
+	QCBOREncode_CloseMap(&encode_ctx);
+	UsefulBufC EncodedCBOR;
+	QCBORError qcErr = QCBOREncode_Finish(&encode_ctx, &EncodedCBOR);
+
+	if (qcErr) {
+		LOG_ERR("Error encoding CBOR to reset deired endpoint: %d", qcErr);
+		return -qcErr;
+	}
 
 	int err;
-	err = golioth_lightdb_set_cb(client, APP_STATE_DESIRED_ENDP,
-			GOLIOTH_CONTENT_FORMAT_APP_JSON, sbuf, strlen(sbuf),
-			async_handler, NULL);
+	err = golioth_lightdb_set_cb(
+			client,
+			APP_STATE_DESIRED_ENDP,
+			GOLIOTH_CONTENT_FORMAT_APP_CBOR,
+			EncodedCBOR.ptr,
+			EncodedCBOR.len,
+			async_handler,
+			NULL
+			);
 	if (err) {
 		LOG_ERR("Unable to write to LightDB State: %d", err);
 		return err;
 	}
 	return 0;
+
+
 }
 
 void app_state_observe(void) {
 	int err = golioth_lightdb_observe_cb(client, APP_STATE_DESIRED_ENDP,
-			GOLIOTH_CONTENT_FORMAT_APP_JSON, app_state_desired_handler, NULL);
+			GOLIOTH_CONTENT_FORMAT_APP_CBOR, app_state_desired_handler, NULL);
 	if (err) {
 	   LOG_WRN("failed to observe lightdb path: %d", err);
 	}
@@ -140,62 +161,37 @@ int app_state_desired_handler(struct golioth_req_rsp *rsp) {
 
 	LOG_HEXDUMP_DBG(rsp->data, rsp->len, APP_STATE_DESIRED_ENDP);
 
-	struct template_state parsed_state;
-
-	int ret = json_obj_parse((char *)rsp->data, rsp->len,
-			template_state_descr, ARRAY_SIZE(template_state_descr),
-			&parsed_state);
-
-	if (ret < 0) {
-		LOG_ERR("Error parsing desired values: %d", -1);
+	if ((rsp->len == 1) && (rsp->data[0] == 0xf6)) {
+		/* This is `null` in CBOR */
+		LOG_ERR("Endpoint is null, resetting desired to defaults");
 		reset_desired();
-		return 0;
+		return -EFAULT;
 	}
 
-	uint8_t desired_processed_count = 0;
-	uint8_t state_change_count = 0;
-	if (ret & 1<<0) {
-		// Process example_int0
-		if ((parsed_state.example_int0 >= 0) && (parsed_state.example_int0 < 10000)) {
-			LOG_DBG("Validated desired example_int0 value: %d", parsed_state.example_int0);
-			_example_int0 = parsed_state.example_int0;
-			++desired_processed_count;
-			++state_change_count;
-		}
-		else if (parsed_state.example_int0 == -1) {
-			LOG_DBG("No change requested for example_int0");
-		}
-		else {
-			LOG_ERR("Invalid desired example_int0 value: %d", parsed_state.example_int0);
-			++desired_processed_count;
-		}
-	}
-	if (ret & 1<<1) {
-		// Process example_int1
-		if ((parsed_state.example_int1 >= 0) && (parsed_state.example_int1 < 10000)) {
-			LOG_DBG("Validated desired example_int1 value: %d", parsed_state.example_int1);
-			_example_int1 = parsed_state.example_int1;
-			++desired_processed_count;
-			++state_change_count;
-		}
-		else if (parsed_state.example_int1 == -1) {
-			LOG_DBG("No change requested for example_int1");
-		}
-		else {
-			LOG_ERR("Invalid desired example_int1 value: %d", parsed_state.example_int1);
-			++desired_processed_count;
-		}
-	}
+	QCBORDecodeContext decode_ctx;
+	bool reset_cumulative;
+	UsefulBufC payload = { rsp->data, rsp->len };
 
-	if (state_change_count) {
-		// The state was changed, so update the state on the Golioth servers
-		app_state_update_actual();
-	}
-	if (desired_processed_count) {
-		// We processed some desired changes to return these to -1 on the server
-		// to indicate the desired values were received.
+	QCBORDecode_Init(&decode_ctx, payload, QCBOR_DECODE_MODE_NORMAL);
+	QCBORDecode_EnterMap(&decode_ctx, NULL);
+	QCBORDecode_GetBoolInMapSZ(&decode_ctx, DESIRED_RESET_KEY, &reset_cumulative);
+	QCBORDecode_ExitMap(&decode_ctx);
+
+	int err = QCBORDecode_Finish(&decode_ctx);
+	if (err) {
+		LOG_ERR("QCBOR decode error; resetting desired endpoint values.");
+		LOG_ERR("QCBOR error code %d: %s", err, qcbor_err_to_str(err));
 		reset_desired();
+		return -ENOTSUP;
+	} else {
+		LOG_DBG("Decoded: reset_cumulative == %s",
+				reset_cumulative ? "true" : "false"
+				);
+		if (reset_cumulative) {
+			LOG_INF("Request to reset cumulative values received. Processing now.");
+			reset_cumulative_totals();
+			reset_desired();
+		}
 	}
-
 	return 0;
 }
