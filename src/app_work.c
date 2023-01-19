@@ -181,6 +181,21 @@ static int update_ontime(uint16_t adc_value, adc_node_t *ch) {
 	}
 }
 
+int reset_cumulative_totals(void) {
+	if (k_sem_take(&adc_data_sem, K_MSEC(5000)) == 0) {
+		k_sem_give(&adc_data_sem);
+		adc_ch0.total_cloud = 0;
+		adc_ch1.total_cloud = 0;
+		adc_ch0.total_unreported = 0;
+		adc_ch1.total_unreported = 0;
+		k_sem_give(&adc_data_sem);
+		return 0;
+	} else {
+		LOG_ERR("Could not reset cumulative values; blocked by semaphore.");
+		return -EACCES;
+	}
+}
+
 /* Work handler will be called from main via app_work_submit() */
 /* Do all of your work here! */
 static void sensor_work_handler(struct k_work *work) {
