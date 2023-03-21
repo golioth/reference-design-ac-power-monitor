@@ -1,10 +1,10 @@
-Golioth Reference Design Power Monitor
-######################################
+Golioth AC Power Monitor Reference Design
+#########################################
 
 Overview
 ********
 
-The Golioth IoT Power Monitor reference design includes two channels for
+The Golioth AC Power Monitor reference design includes two channels for
 monitoring electrical equipment. Whether applied to machine tools on a
 production floor, or the electrical circuits in a commercial/residential
 setting, having data about electrical usage is a powerful tool for making
@@ -30,9 +30,9 @@ Install the Python virtual environment (recommended)
 .. code-block:: console
 
    cd ~
-   mkdir golioth-reference-design-powermonitor
-   python -m venv golioth-reference-design-powermonitor/.venv
-   source golioth-reference-design-powermonitor/.venv/bin/activate
+   mkdir reference-design-ac-power-monitor
+   python -m venv reference-design-ac-power-monitor/.venv
+   source reference-design-ac-power-monitor/.venv/bin/activate
    pip install wheel west
 
 Use ``west`` to initialize and install
@@ -40,8 +40,8 @@ Use ``west`` to initialize and install
 
 .. code-block:: console
 
-   cd ~/golioth-reference-design-powermonitor
-   west init -m git@github.com:golioth/reference-design-powermonitor.git .
+   cd ~/reference-design-ac-power-monitor
+   west init -m git@github.com:golioth/reference-design-ac-power-monitor.git .
    west update
    west zephyr-export
    pip install -r deps/zephyr/scripts/requirements.txt
