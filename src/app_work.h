@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Golioth, Inc.
+ * Copyright (c) 2023 Golioth, Inc.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -7,8 +7,21 @@
 #ifndef __APP_WORK_H__
 #define __APP_WORK_H__
 
+/** The `app_work.c` file performs the important work of this application which
+ * is to read sensor values and report them to the Golioth LightDB Stream as
+ * time-series data.
+ *
+ * For this demonstration, a `counter` value is periodically logged and pushed
+ * to the Golioth time-series database. This simulated sensor reading occurs
+ * when the loop in `main.c` calls `app_work_sensor_read()`. The frequency of
+ * this loop is determined by values received from the Golioth Settings Service
+ * (see app_settings.h).
+ *
+ * https://docs.golioth.io/firmware/zephyr-device-sdk/light-db-stream/
+ */
+
 #include <stdint.h>
-#include <drivers/spi.h>
+#include <zephyr/drivers/spi.h>
 #include <net/golioth/system_client.h>
 
 extern struct k_sem adc_data_sem;
@@ -19,7 +32,7 @@ struct ontime {
 };
 
 typedef struct {
-	const struct spi_dt_spec i2c;
+	const struct spi_dt_spec spi;
 	uint8_t ch_num;
 	int64_t laston;
 	uint64_t runtime;
@@ -29,10 +42,10 @@ typedef struct {
 
 } adc_node_t;
 
-void get_ontime(struct ontime *ot);
-int reset_cumulative_totals(void);
 void app_work_init(struct golioth_client* work_client);
 void app_work_on_connect(void);
-void app_work_submit(void);
+void app_work_sensor_read(void);
+void get_ontime(struct ontime *ot);
+int reset_cumulative_totals(void);
 
 #endif /* __APP_WORK_H__ */
