@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Golioth, Inc.
+ * Copyright (c) 2023 Golioth, Inc.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -8,16 +8,21 @@
 LOG_MODULE_REGISTER(app_settings, LOG_LEVEL_DBG);
 
 #include <net/golioth/settings.h>
+#include "app_settings.h"
 #include "main.h"
 
-static int32_t _loop_delay_s = 60;
-static uint16_t _adc_floor[2] = { 0, 0 };
+static struct golioth_client *client;
 
-int32_t get_loop_delay_s(void) {
+static int32_t _loop_delay_s = 60;
+static uint16_t _adc_floor[2] = {0, 0};
+
+int32_t get_loop_delay_s(void)
+{
 	return _loop_delay_s;
 }
 
-uint16_t get_adc_floor(uint8_t ch_num) {
+uint16_t get_adc_floor(uint8_t ch_num)
+{
 	if (ch_num >= sizeof(_adc_floor)) {
 		return 0;
 	} else {
@@ -25,11 +30,10 @@ uint16_t get_adc_floor(uint8_t ch_num) {
 	}
 }
 
-enum golioth_settings_status on_setting(
-		const char *key,
-		const struct golioth_settings_value *value) {
-
+enum golioth_settings_status on_setting(const char *key, const struct golioth_settings_value *value)
+{
 	LOG_DBG("Received setting: key = %s, type = %d", key, value->type);
+
 	if (strcmp(key, "LOOP_DELAY_S") == 0) {
 		/* This setting is expected to be numeric, return an error if it's not */
 		if (value->type != GOLIOTH_SETTINGS_VALUE_TYPE_INT64) {
@@ -87,7 +91,27 @@ enum golioth_settings_status on_setting(
 	return GOLIOTH_SETTINGS_KEY_NOT_RECOGNIZED;
 }
 
-int app_register_settings(struct golioth_client *settings_client) {
+int app_settings_init(struct golioth_client *state_client)
+{
+	client = state_client;
+	int err = app_settings_register(client);
+
+	return err;
+}
+
+int app_settings_observe(void)
+{
+	int err = golioth_settings_observe(client);
+
+	if (err) {
+		LOG_ERR("Failed to observe settings: %d", err);
+	}
+
+	return err;
+}
+
+int app_settings_register(struct golioth_client *settings_client)
+{
 	int err = golioth_settings_register_callback(settings_client, on_setting);
 
 	if (err) {
