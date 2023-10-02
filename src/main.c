@@ -20,6 +20,10 @@ LOG_MODULE_REGISTER(golioth_ac_powermonitor, LOG_LEVEL_DBG);
 #include "app_work.h"
 #include "dfu/app_dfu.h"
 
+#ifdef CONFIG_ALUDEL_BATTERY_MONITOR
+#include "battery_monitor/battery.h"
+#endif
+
 #ifdef CONFIG_MODEM_INFO
 #include <modem/modem_info.h>
 #endif

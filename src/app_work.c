@@ -16,6 +16,10 @@ LOG_MODULE_REGISTER(app_work, LOG_LEVEL_DBG);
 #include "app_state.h"
 #include "app_settings.h"
 
+#ifdef CONFIG_ALUDEL_BATTERY_MONITOR
+#include "battery_monitor/battery.h"
+#endif
+
 #define SPI_OP	SPI_OP_MODE_MASTER | SPI_MODE_CPOL | SPI_MODE_CPHA | SPI_WORD_SET(8) | SPI_LINES_SINGLE
 
 static struct golioth_client *client;
@@ -291,6 +295,11 @@ void app_work_sensor_read(void)
 {
 	int err = 0;
 	struct mcp3201_data ch0_data, ch1_data;
+
+	IF_ENABLED(CONFIG_ALUDEL_BATTERY_MONITOR, (
+		read_and_report_battery();
+	));
+
 
 	get_adc_reading(&adc_ch0, &ch0_data);
 	get_adc_reading(&adc_ch1, &ch1_data);
