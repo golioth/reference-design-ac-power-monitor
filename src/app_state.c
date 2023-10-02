@@ -77,6 +77,7 @@ int app_state_update_actual(void)
 {
 	get_ontime(&ot);
 	char sbuf[sizeof(DEVICE_STATE_FMT) + 10]; /* space for uint16 values */
+
 	snprintk(sbuf, sizeof(sbuf), DEVICE_STATE_FMT, ot.ch0, ot.ch1);
 
 	int err;
@@ -180,8 +181,7 @@ int app_state_desired_handler(struct golioth_req_rsp *rsp)
 
 int app_state_observe(void)
 {
-	int err = golioth_lightdb_observe_cb(client, APP_STATE_DESIRED_ENDP,
-					     GOLIOTH_CONTENT_FORMAT_APP_JSON,
+	int err = golioth_lightdb_observe_cb(client, APP_STATE_DESIRED_ENDP, GOLIOTH_CONTENT_FORMAT_APP_JSON,
 					     app_state_desired_handler, NULL);
 	if (err) {
 		LOG_WRN("failed to observe lightdb path: %d", err);
