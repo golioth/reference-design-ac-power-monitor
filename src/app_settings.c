@@ -48,8 +48,7 @@ enum golioth_settings_status on_setting(const char *key, const struct golioth_se
 		/* Only update if value has changed */
 		if (_loop_delay_s == (int32_t)value->i64) {
 			LOG_DBG("Received LOOP_DELAY_S already matches local value.");
-		}
-		else {
+		} else {
 			_loop_delay_s = (int32_t)value->i64;
 			LOG_INF("Set loop delay to %d seconds", _loop_delay_s);
 
@@ -77,13 +76,13 @@ enum golioth_settings_status on_setting(const char *key, const struct golioth_se
 		/* Only update if value has changed */
 		if (_adc_floor[ch_num] == (int16_t)value->i64) {
 			LOG_DBG("Received ADC_FLOOR_CH%d already matches local value.", ch_num);
-		}
-		else {
+		} else {
 			_adc_floor[ch_num] = (int16_t)value->i64;
 			LOG_INF("Set ADC_FLOOR_CH%d to %d", ch_num, _adc_floor[ch_num]);
 
 			wake_system_thread();
 		}
+
 		return GOLIOTH_SETTINGS_SUCCESS;
 	}
 

@@ -65,7 +65,8 @@ struct mcp3201_data {
 	uint16_t val2;
 };
 
-void get_ontime(struct ontime *ot) {
+void get_ontime(struct ontime *ot)
+{
 	ot->ch0 = adc_ch0.runtime;
 	ot->ch1 = adc_ch1.runtime;
 }
@@ -86,24 +87,35 @@ static int async_error_handler(struct golioth_req_rsp *rsp)
  */
 static int process_adc_reading(uint8_t buf_data[4], struct mcp3201_data *adc_data)
 {
-	if (buf_data[0] & 1<<5) { return -ENOTSUP; }	/* Missing NULL bit */
+	if (buf_data[0] & 1<<5) {	/* Missing NULL bit */
+		return -ENOTSUP;
+	}
+
 	uint16_t data_msb = 0;
 	uint16_t data_lsb = 0;
-	data_msb = buf_data[0] & 0x1F;
-	data_msb |= (data_msb<<7) | (buf_data[1]>>1);
-	for (uint8_t i=0; i<12; i++) {
-		bool bit_set = false;
-		if (i < 2) {
-			if (buf_data[1] & (1<<(1-i))) { bit_set = true; }
-		}
-		else if (i < 10) {
-			if (buf_data[2] & (1<<(2+7-i))) { bit_set = true; }
-		}
-		else {
-			if (buf_data[3] & (1<<(10+7-i))) { bit_set = true; }
-		}
 
-		if (bit_set) { data_lsb |= (1<<i); }
+	data_msb = buf_data[0] & 0x1F;
+	data_msb |= (data_msb << 7) | (buf_data[1] >> 1);
+
+	for (uint8_t i = 0; i < 12; i++) {
+		bool bit_set = false;
+
+		if (i < 2) {
+			if (buf_data[1] & (1 << (1 - i))) {
+				bit_set = true;
+			}
+		} else if (i < 10) {
+			if (buf_data[2] & (1 << (2 + 7 - i))) {
+				bit_set = true;
+			}
+		} else {
+			if (buf_data[3] & (1 << (10 + 7 - i))) {
+				bit_set = true;
+			}
+		}
+		if (bit_set) {
+			data_lsb |= (1 << i);
+		}
 	}
 
 	adc_data->val1 = data_msb;
@@ -164,10 +176,10 @@ static int update_ontime(uint16_t adc_value, adc_node_t *ch)
 		if (adc_value <= get_adc_floor(ch->ch_num)) {
 			ch->runtime = 0;
 			ch->laston = -1;
-		}
-		else {
+		} else {
 			int64_t ts = k_uptime_get();
 			int64_t duration;
+
 			if (ch->laston > 0) {
 				duration = ts - ch->laston;
 			} else {
@@ -177,8 +189,8 @@ static int update_ontime(uint16_t adc_value, adc_node_t *ch)
 			ch->laston = ts;
 			ch->total_unreported += duration;
 		}
-
 		k_sem_give(&adc_data_sem);
+
 		return 0;
 	}
 
@@ -236,7 +248,7 @@ static int get_cumulative_handler(struct golioth_req_rsp *rsp)
 		if (strncmp(key.value, "ch0", 3) == 0) {
 			found_ch0 = true;
 			decoded_ch0 = data;
-		} else if (strncmp(key.value, "ch1", 3) == 0){
+		} else if (strncmp(key.value, "ch1", 3) == 0) {
 			found_ch1 = true;
 			decoded_ch1 = data;
 		} else {
@@ -269,6 +281,7 @@ void app_work_on_connect(void)
 {
 	/* Get cumulative "on" time from Golioth LightDB State */
 	int err;
+
 	err = golioth_lightdb_get_cb(client, ADC_CUMULATIVE_ENDP, GOLIOTH_CONTENT_FORMAT_APP_CBOR,
 				     get_cumulative_handler, NULL);
 	if (err) {
@@ -276,7 +289,7 @@ void app_work_on_connect(void)
 	}
 }
 
-void app_work_init(struct golioth_client* work_client)
+void app_work_init(struct golioth_client *work_client)
 {
 	client = work_client;
 	k_sem_init(&adc_data_sem, 0, 1);
