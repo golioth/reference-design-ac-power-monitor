@@ -42,6 +42,33 @@ typedef struct {
 
 } adc_node_t;
 
+/* Ostentus slide labels */
+#define CH0_CUR_LABEL "Current ch0"
+#define CH1_CUR_LABEL "Current ch1"
+#define CH0_ONTIME_LBL   "Ontime ch0"
+#define CH1_ONTIME_LBL   "Ontime ch1"
+#define LABEL_BATTERY	 "Battery"
+#define LABEL_FIRMWARE	 "Firmware"
+#define SUMMARY_TITLE	 "Channel 0:"
+
+/**
+ * Each Ostentus slide needs a unique key. You may add additional slides by
+ * inserting elements with the name of your choice to this enum.
+ */
+typedef enum {
+	CH0_CURRENT,
+	CH1_CURRENT,
+	CH0_CURRENT_RAW,
+	CH1_CURRENT_RAW,
+	CH0_ONTIME,
+	CH1_ONTIME,
+#ifdef CONFIG_ALUDEL_BATTERY_MONITOR
+	BATTERY_V,
+	BATTERY_LVL,
+#endif
+	FIRMWARE
+}slide_key;
+
 void app_work_init(struct golioth_client* work_client);
 void app_work_on_connect(void);
 void app_work_sensor_read(void);

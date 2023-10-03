@@ -20,6 +20,10 @@ LOG_MODULE_REGISTER(golioth_ac_powermonitor, LOG_LEVEL_DBG);
 #include "app_work.h"
 #include "dfu/app_dfu.h"
 
+#ifdef CONFIG_LIB_OSTENTUS
+#include <libostentus.h>
+#endif
+
 #ifdef CONFIG_ALUDEL_BATTERY_MONITOR
 #include "battery_monitor/battery.h"
 #endif
@@ -178,6 +182,15 @@ int main(void)
 	LOG_INF("Firmware version: %s", CONFIG_MCUBOOT_IMAGE_VERSION);
 	IF_ENABLED(CONFIG_MODEM_INFO, (log_modem_firmware_version();));
 
+	IF_ENABLED(CONFIG_LIB_OSTENTUS, (
+		/* Clear Ostentus memory */
+		clear_memory();
+		/* Update Ostentus LEDS using bitmask (Power On and Battery) */
+		led_bitmask(LED_POW | LED_BAT);
+		/* Show Golioth Logo on Ostentus ePaper screen */
+		show_splash();
+	));
+
 	/* Get system thread id so loop delay change event can wake main */
 	_system_thread = k_current_get();
 
@@ -208,8 +221,10 @@ int main(void)
 	/* Start LTE asynchronously if the nRF9160 is used
 	 * Golioth Client will start automatically when LTE connects
 	 */
-	IF_ENABLED(CONFIG_SOC_NRF9160, (LOG_INF("Connecting to LTE, this may take some time...");
-					lte_lc_init_and_connect_async(lte_handler);));
+	IF_ENABLED(CONFIG_SOC_NRF9160, (
+		LOG_INF("Connecting to LTE, this may take some time...");
+		lte_lc_init_and_connect_async(lte_handler);
+	));
 
 	/* If nRF9160 is not used, start the Golioth Client and block until connected */
 	if (!IS_ENABLED(CONFIG_SOC_NRF9160)) {
@@ -245,6 +260,38 @@ int main(void)
 
 	gpio_init_callback(&button_cb_data, button_pressed, BIT(user_btn.pin));
 	gpio_add_callback(user_btn.port, &button_cb_data);
+
+	IF_ENABLED(CONFIG_LIB_OSTENTUS,(
+		/* Set up a slideshow on Ostentus
+		 *  - add up to 256 slides
+		 *  - use the enum in app_work.h to add new keys
+		 *  - values are updated using these keys (see app_work.c)
+		 */
+		slide_add(CH0_CURRENT, CH0_CUR_LABEL, strlen(CH0_CUR_LABEL));
+		slide_add(CH1_CURRENT, CH1_CUR_LABEL, strlen(CH1_CUR_LABEL));
+		slide_add(CH0_CURRENT_RAW, CH0_CUR_LABEL, strlen(CH0_CUR_LABEL));
+		slide_add(CH1_CURRENT_RAW, CH1_CUR_LABEL, strlen(CH1_CUR_LABEL));
+
+		slide_add(CH0_ONTIME, CH0_ONTIME_LBL, strlen(CH0_ONTIME_LBL));
+		slide_add(CH1_ONTIME, CH1_ONTIME_LBL, strlen(CH1_ONTIME_LBL));
+
+		IF_ENABLED(CONFIG_ALUDEL_BATTERY_MONITOR, (
+			slide_add(BATTERY_V, LABEL_BATTERY, strlen(LABEL_BATTERY));
+			slide_add(BATTERY_LVL, LABEL_BATTERY, strlen(LABEL_BATTERY));
+		));
+		slide_add(FIRMWARE, LABEL_FIRMWARE, strlen(LABEL_FIRMWARE));
+
+		/* Set the title of the Ostentus summary slide (optional) */
+		summary_title(SUMMARY_TITLE, strlen(SUMMARY_TITLE));
+
+		/* Update the Firmware slide with the firmware version */
+		slide_set(FIRMWARE, CONFIG_MCUBOOT_IMAGE_VERSION, strlen(CONFIG_MCUBOOT_IMAGE_VERSION));
+
+		/* Start Ostentus slideshow with 30 second delay between slides */
+		slideshow(30000);
+	));
+
+
 
 	while (true) {
 		app_work_sensor_read();

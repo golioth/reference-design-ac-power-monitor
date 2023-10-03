@@ -16,10 +16,15 @@ LOG_MODULE_REGISTER(app_work, LOG_LEVEL_DBG);
 #include "app_state.h"
 #include "app_settings.h"
 
+#ifdef CONFIG_LIB_OSTENTUS
+#include <libostentus.h>
+#endif
+
 #ifdef CONFIG_ALUDEL_BATTERY_MONITOR
 #include "battery_monitor/battery.h"
 #endif
 
+#define ADC_RAW_TO_AMP (0.003529412f)
 #define SPI_OP	SPI_OP_MODE_MASTER | SPI_MODE_CPOL | SPI_MODE_CPHA | SPI_WORD_SET(8) | SPI_LINES_SINGLE
 
 static struct golioth_client *client;
@@ -298,6 +303,8 @@ void app_work_sensor_read(void)
 
 	IF_ENABLED(CONFIG_ALUDEL_BATTERY_MONITOR, (
 		read_and_report_battery();
+		slide_set(BATTERY_V, get_batt_v_str(), strlen(get_batt_v_str()));
+		slide_set(BATTERY_LVL, get_batt_lvl_str(), strlen(get_batt_lvl_str()));
 	));
 
 
@@ -320,4 +327,31 @@ void app_work_sensor_read(void)
 	 * different.
 	 */
 	push_adc_to_golioth(ch0_data.val1, ch1_data.val1);
+
+	IF_ENABLED(CONFIG_LIB_OSTENTUS, (
+		/* Update slide values on Ostentus
+		 *  -values should be sent as strings
+		 *  -use the enum from app_work.h for slide key values
+		 */
+		char json_buf[128];
+
+		snprintk(json_buf, sizeof(json_buf), "%.2f A", (ch0_data.val1 * ADC_RAW_TO_AMP));
+		slide_set(CH0_CURRENT, json_buf, strlen(json_buf));
+
+		snprintk(json_buf, sizeof(json_buf), "%.2f A", (ch1_data.val1 * ADC_RAW_TO_AMP));
+		slide_set(CH1_CURRENT, json_buf, strlen(json_buf));
+
+		snprintk(json_buf, sizeof(json_buf), "%d RAW", ch0_data.val1);
+		slide_set(CH0_CURRENT_RAW, json_buf, strlen(json_buf));
+
+		snprintk(json_buf, sizeof(json_buf), "%d RAW", ch1_data.val1);
+		slide_set(CH1_CURRENT_RAW, json_buf, strlen(json_buf));
+
+		snprintk(json_buf, sizeof(json_buf), "%.2f sec", (adc_ch0.runtime / 1000.0));
+		slide_set(CH0_ONTIME, json_buf, strlen(json_buf));
+
+		snprintk(json_buf, sizeof(json_buf), "%.2f sec", (adc_ch1.runtime / 1000.0));
+		slide_set(CH1_ONTIME, json_buf, strlen(json_buf));
+
+	));
 }
