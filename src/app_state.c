@@ -35,12 +35,6 @@ static int async_handler(struct golioth_req_rsp *rsp)
 	return 0;
 }
 
-void app_state_init(struct golioth_client* state_client)
-{
-	client = state_client;
-	k_sem_give(&update_actual);
-}
-
 static int app_state_reset_desired(void)
 {
 	LOG_INF("Resetting \"%s\" LightDB State endpoint to defaults.", APP_STATE_DESIRED_ENDP);
@@ -73,6 +67,12 @@ static int app_state_reset_desired(void)
 	return 0;
 }
 
+void app_state_init(struct golioth_client *state_client)
+{
+	client = state_client;
+	k_sem_give(&update_actual);
+}
+
 int app_state_update_actual(void)
 {
 	get_ontime(&ot);
@@ -90,20 +90,20 @@ int app_state_update_actual(void)
 	return err;
 }
 
-int app_state_report_ontime(adc_node_t* ch0, adc_node_t* ch1)
+int app_state_report_ontime(adc_node_t *ch0, adc_node_t *ch1)
 {
 	int err;
 	char json_buf[128];
 
 	if (k_sem_take(&adc_data_sem, K_MSEC(300)) == 0) {
+
 		if (ch0->loaded_from_cloud) {
 			snprintk(json_buf, sizeof(json_buf), DEVICE_STATE_FMT_CUMULATIVE,
 				 ch0->runtime, ch1->runtime,
 				 (ch0->total_cloud + ch0->total_unreported),
 				 (ch1->total_cloud + ch1->total_unreported));
 		} else {
-			snprintk(json_buf, sizeof(json_buf), DEVICE_STATE_FMT,
-				 ch0->runtime, ch1->runtime);
+			snprintk(json_buf, sizeof(json_buf), DEVICE_STATE_FMT, ch0->runtime, ch1->runtime);
 			/* Cumulative not yet loaded from LightDB State */
 			/* Try to load it now */
 			app_work_on_connect();
@@ -181,7 +181,7 @@ int app_state_desired_handler(struct golioth_req_rsp *rsp)
 
 int app_state_observe(void)
 {
-	int err = golioth_lightdb_observe_cb(client, APP_STATE_DESIRED_ENDP, GOLIOTH_CONTENT_FORMAT_APP_JSON,
+	int err = golioth_lightdb_observe_cb(client, APP_STATE_DESIRED_ENDP, GOLIOTH_CONTENT_FORMAT_APP_CBOR,
 					     app_state_desired_handler, NULL);
 	if (err) {
 		LOG_WRN("failed to observe lightdb path: %d", err);
@@ -197,4 +197,3 @@ int app_state_observe(void)
 
 	return err;
 }
-
