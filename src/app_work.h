@@ -67,9 +67,9 @@ typedef enum {
 	BATTERY_LVL,
 #endif
 	FIRMWARE
-}slide_key;
+} slide_key;
 
-void app_work_init(struct golioth_client* work_client);
+void app_work_init(struct golioth_client *work_client);
 void app_work_on_connect(void);
 void app_work_sensor_read(void);
 void get_ontime(struct ontime *ot);
