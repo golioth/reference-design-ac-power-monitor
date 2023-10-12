@@ -11,4 +11,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Initial release
-- Support for aludel_mini_v1_sparkfun9160 (cutom Golioth board)
+- Support for aludel_mini_v1_sparkfun9160 (custom Golioth board)
