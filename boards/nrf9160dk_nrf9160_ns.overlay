@@ -12,12 +12,10 @@
 
 };
 
-arduino_spi: &spi3 {
-
-	compatible = "nordic,nrf-spim";
+&arduino_spi {
 	status = "okay";
 	cs-gpios = <&arduino_header 16 GPIO_ACTIVE_LOW>, /* D10 */
-		   <&gpio0 9 GPIO_ACTIVE_LOW>;
+		   <&arduino_header 15 GPIO_ACTIVE_LOW>; /* D9 */
 
 	mcp3201_ch0: mcp3201@0 {
 		compatible = "vnd,spi-device";
