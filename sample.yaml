@@ -3,7 +3,7 @@
 
 sample:
   description: Golioth AC Power Monitor Reference Design
-  name: powermonitor
+  name: ac_powermonitor
 common:
   harness: net
   platform_allow: >
