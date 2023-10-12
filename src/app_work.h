@@ -11,12 +11,6 @@
  * is to read sensor values and report them to the Golioth LightDB Stream as
  * time-series data.
  *
- * For this demonstration, a `counter` value is periodically logged and pushed
- * to the Golioth time-series database. This simulated sensor reading occurs
- * when the loop in `main.c` calls `app_work_sensor_read()`. The frequency of
- * this loop is determined by values received from the Golioth Settings Service
- * (see app_settings.h).
- *
  * https://docs.golioth.io/firmware/zephyr-device-sdk/light-db-stream/
  */
 
@@ -43,13 +37,13 @@ typedef struct {
 } adc_node_t;
 
 /* Ostentus slide labels */
-#define CH0_CUR_LABEL "Current ch0"
-#define CH1_CUR_LABEL "Current ch1"
-#define CH0_ONTIME_LBL   "Ontime ch0"
-#define CH1_ONTIME_LBL   "Ontime ch1"
-#define LABEL_BATTERY	 "Battery"
-#define LABEL_FIRMWARE	 "Firmware"
-#define SUMMARY_TITLE	 "Channel 0:"
+#define CH0_CUR_LABEL	"Current ch0"
+#define CH1_CUR_LABEL	"Current ch1"
+#define CH0_ONTIME_LBL  "Ontime ch0"
+#define CH1_ONTIME_LBL  "Ontime ch1"
+#define LABEL_BATTERY	"Battery"
+#define LABEL_FIRMWARE	"Firmware"
+#define SUMMARY_TITLE	"Channel 0:"
 
 /**
  * Each Ostentus slide needs a unique key. You may add additional slides by
