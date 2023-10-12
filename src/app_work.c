@@ -142,11 +142,13 @@ static int get_adc_reading(adc_node_t *adc, struct mcp3201_data *adc_data)
 	LOG_DBG("Received 4 bytes: %d %d %d %d", my_buffer[0], my_buffer[1], my_buffer[2], my_buffer[3]);
 
 	err = process_adc_reading(my_buffer, adc_data);
-	if (err == 0) {
-		LOG_INF("mcp3201_ch%d received two ADC readings: 0x%04x\t0x%04x",
-			adc->ch_num, adc_data->val1, adc_data->val2);
+	if (err) {
+		LOG_ERR("Failed to process ADC readings %d", err);
 		return err;
 	}
+
+	LOG_INF("mcp3201_ch%d received two ADC readings: 0x%04x\t0x%04x",
+		adc->ch_num, adc_data->val1, adc_data->val2);
 
 	return 0;
 }
@@ -224,8 +226,8 @@ static int get_cumulative_handler(struct golioth_req_rsp *rsp)
 
 	uint64_t decoded_ch0 = 0;
 	uint64_t decoded_ch1 = 0;
-	bool found_ch0 = 0;
-	bool found_ch1 = 0;
+	bool found_ch0 = false;
+	bool found_ch1 = false;
 
 	struct zcbor_string key;
 	uint64_t data;
@@ -234,7 +236,6 @@ static int get_cumulative_handler(struct golioth_req_rsp *rsp)
 	ZCBOR_STATE_D(decoding_state, 1, rsp->data, rsp->len, 1);
 	ok = zcbor_map_start_decode(decoding_state);
 	if (!ok) {
-		return 1;
 		goto cumulative_decode_error;
 	}
 
@@ -335,7 +336,7 @@ void app_work_sensor_read(void)
 	}
 
 	/* Send sensor data to Golioth */
-	/* Two values were read for each sensor but we'll record only on form each
+	/* Two values were read for each sensor but we'll record only one from each
 	 * channel as it's unlikely the two readings will be substantially
 	 * different.
 	 */
@@ -343,8 +344,8 @@ void app_work_sensor_read(void)
 
 	IF_ENABLED(CONFIG_LIB_OSTENTUS, (
 		/* Update slide values on Ostentus
-		 *  -values should be sent as strings
-		 *  -use the enum from app_work.h for slide key values
+		 * - values should be sent as strings
+		 * - use the enum from app_work.h for slide key values
 		 */
 		char json_buf[128];
 
