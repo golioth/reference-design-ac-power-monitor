@@ -9,6 +9,7 @@ LOG_MODULE_REGISTER(app_work, LOG_LEVEL_DBG);
 
 #include <stdlib.h>
 #include <net/golioth/system_client.h>
+#include <zephyr/drivers/spi.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/sensor.h>
 

@@ -1,0 +1,8 @@
+# Copyright (c) 2023 Golioth, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+    MCP3201 used to measure voltage from an AC current clamp
+compatible: "microchip,mcp3201"
+
+include: spi-device.yaml
