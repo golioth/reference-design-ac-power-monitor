@@ -234,6 +234,17 @@ static int get_cumulative_handler(struct golioth_req_rsp *rsp)
 	uint64_t data;
 	bool ok;
 
+	if ((rsp->len == 1) && (rsp->data[0] == 0xf6)) {
+		/* This is `null` in CBOR */
+		LOG_WRN("Cumulative state is null, use runtime as cumulative on next update.");
+		if (k_sem_take(&adc_data_sem, K_MSEC(300)) == 0) {
+			adc_ch0.loaded_from_cloud = true;
+			adc_ch1.loaded_from_cloud = true;
+			k_sem_give(&adc_data_sem);
+		}
+		return 0;
+	}
+
 	ZCBOR_STATE_D(decoding_state, 1, rsp->data, rsp->len, 1);
 	ok = zcbor_map_start_decode(decoding_state);
 	if (!ok) {
