@@ -269,8 +269,6 @@ int main(void)
 		 */
 		slide_add(CH0_CURRENT, CH0_CUR_LABEL, strlen(CH0_CUR_LABEL));
 		slide_add(CH1_CURRENT, CH1_CUR_LABEL, strlen(CH1_CUR_LABEL));
-		slide_add(CH0_CURRENT_RAW, CH0_CUR_LABEL, strlen(CH0_CUR_LABEL));
-		slide_add(CH1_CURRENT_RAW, CH1_CUR_LABEL, strlen(CH1_CUR_LABEL));
 
 		slide_add(CH0_ONTIME, CH0_ONTIME_LBL, strlen(CH0_ONTIME_LBL));
 		slide_add(CH1_ONTIME, CH1_ONTIME_LBL, strlen(CH1_ONTIME_LBL));

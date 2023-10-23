@@ -367,16 +367,10 @@ void app_work_sensor_read(void)
 		snprintk(json_buf, sizeof(json_buf), "%.2f A", (ch1_data.val1 * ADC_RAW_TO_AMP));
 		slide_set(CH1_CURRENT, json_buf, strlen(json_buf));
 
-		snprintk(json_buf, sizeof(json_buf), "%d RAW", ch0_data.val1);
-		slide_set(CH0_CURRENT_RAW, json_buf, strlen(json_buf));
-
-		snprintk(json_buf, sizeof(json_buf), "%d RAW", ch1_data.val1);
-		slide_set(CH1_CURRENT_RAW, json_buf, strlen(json_buf));
-
-		snprintk(json_buf, sizeof(json_buf), "%.2f sec", (adc_ch0.runtime / 1000.0));
+		snprintk(json_buf, sizeof(json_buf), "%lld s", (adc_ch0.runtime / 1000));
 		slide_set(CH0_ONTIME, json_buf, strlen(json_buf));
 
-		snprintk(json_buf, sizeof(json_buf), "%.2f sec", (adc_ch1.runtime / 1000.0));
+		snprintk(json_buf, sizeof(json_buf), "%lld s", (adc_ch1.runtime / 1000));
 		slide_set(CH1_ONTIME, json_buf, strlen(json_buf));
 
 	));
