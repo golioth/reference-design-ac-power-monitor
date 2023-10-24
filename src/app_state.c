@@ -78,7 +78,12 @@ int app_state_update_actual(void)
 	int err;
 	char sbuf[sizeof(DEVICE_STATE_FMT) + 10]; /* space for uint16 values */
 
-	get_ontime(&ot);
+	err = get_ontime(&ot);
+
+	if (err) {
+		LOG_ERR("Failed to retrieve ontime: %d", err);
+		return err;
+	}
 
 	snprintk(sbuf, sizeof(sbuf), DEVICE_STATE_FMT, ot.ch0, ot.ch1);
 	err = golioth_lightdb_set_cb(client, APP_STATE_ACTUAL_ENDP, GOLIOTH_CONTENT_FORMAT_APP_JSON,

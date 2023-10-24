@@ -66,10 +66,16 @@ struct mcp3201_data {
 	uint16_t val2;
 };
 
-void get_ontime(struct ontime *ot)
+int get_ontime(struct ontime *ot)
 {
-	ot->ch0 = adc_ch0.runtime;
-	ot->ch1 = adc_ch1.runtime;
+	if (k_sem_take(&adc_data_sem, K_MSEC(300)) == 0) {
+		ot->ch0 = adc_ch0.runtime;
+		ot->ch1 = adc_ch1.runtime;
+		k_sem_give(&adc_data_sem);
+		return 0;
+	}
+
+	return -ENOLCK;
 }
 
 /* Callback for LightDB Stream */
@@ -202,7 +208,6 @@ static void update_ontime(uint16_t adc_value, adc_node_t *ch)
 int reset_cumulative_totals(void)
 {
 	if (k_sem_take(&adc_data_sem, K_MSEC(5000)) == 0) {
-		k_sem_give(&adc_data_sem);
 		adc_ch0.total_cloud = 0;
 		adc_ch1.total_cloud = 0;
 		adc_ch0.total_unreported = 0;
@@ -364,11 +369,14 @@ void app_work_sensor_read(void)
 		snprintk(json_buf, sizeof(json_buf), "%.2f A", (ch1_data.val1 * ADC_RAW_TO_AMP));
 		slide_set(CH1_CURRENT, json_buf, strlen(json_buf));
 
-		snprintk(json_buf, sizeof(json_buf), "%lld s", (adc_ch0.runtime / 1000));
-		slide_set(CH0_ONTIME, json_buf, strlen(json_buf));
+		if (k_sem_take(&adc_data_sem, K_MSEC(300)) == 0) {
+			snprintk(json_buf, sizeof(json_buf), "%lld s", (adc_ch0.runtime / 1000));
+			slide_set(CH0_ONTIME, json_buf, strlen(json_buf));
 
-		snprintk(json_buf, sizeof(json_buf), "%lld s", (adc_ch1.runtime / 1000));
-		slide_set(CH1_ONTIME, json_buf, strlen(json_buf));
+			snprintk(json_buf, sizeof(json_buf), "%lld s", (adc_ch1.runtime / 1000));
+			slide_set(CH1_ONTIME, json_buf, strlen(json_buf));
 
+			k_sem_give(&adc_data_sem);
+		}
 	));
 }
