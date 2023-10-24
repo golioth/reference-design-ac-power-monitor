@@ -173,7 +173,7 @@ static int push_adc_to_golioth(uint16_t ch0_data, uint16_t ch1_data)
 	return 0;
 }
 
-static int update_ontime(uint16_t adc_value, adc_node_t *ch)
+static void update_ontime(uint16_t adc_value, adc_node_t *ch)
 {
 	if (k_sem_take(&adc_data_sem, K_MSEC(300)) == 0) {
 		if (adc_value <= get_adc_floor(ch->ch_num)) {
@@ -193,11 +193,10 @@ static int update_ontime(uint16_t adc_value, adc_node_t *ch)
 			ch->total_unreported += duration;
 		}
 		k_sem_give(&adc_data_sem);
-
-		return 0;
+		return;
 	}
 
-	return -EACCES;
+	LOG_ERR("Failed to update ontime for ch%d: semaphore unavailable", ch->ch_num);
 }
 
 int reset_cumulative_totals(void)
@@ -324,7 +323,6 @@ void app_work_init(struct golioth_client *work_client)
 /* do all of your work here! */
 void app_work_sensor_read(void)
 {
-	int err = 0;
 	struct mcp3201_data ch0_data, ch1_data;
 
 	IF_ENABLED(CONFIG_ALUDEL_BATTERY_MONITOR, (
@@ -338,13 +336,12 @@ void app_work_sensor_read(void)
 	get_adc_reading(&adc_ch1, &ch1_data);
 
 	/* Calculate the "On" time if readings are not zero */
-	err = update_ontime(ch0_data.val1, &adc_ch0);
-	err &= update_ontime(ch1_data.val1, &adc_ch1);
+	update_ontime(ch0_data.val1, &adc_ch0);
+	update_ontime(ch1_data.val1, &adc_ch1);
 
-	if (err) {
-		LOG_ERR("Failed to update ontime: %d", err);
-	} else {
+	if (k_sem_take(&adc_data_sem, K_MSEC(300)) == 0) {
 		LOG_DBG("Ontime:\t(ch0): %lld\t(ch1): %lld", adc_ch0.runtime, adc_ch1.runtime);
+		k_sem_give(&adc_data_sem);
 	}
 
 	/* Send sensor data to Golioth */
