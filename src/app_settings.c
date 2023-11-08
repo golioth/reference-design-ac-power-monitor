@@ -79,8 +79,6 @@ enum golioth_settings_status on_setting(const char *key, const struct golioth_se
 		} else {
 			_adc_floor[ch_num] = (int16_t)value->i64;
 			LOG_INF("Set ADC_FLOOR_CH%d to %d", ch_num, _adc_floor[ch_num]);
-
-			wake_system_thread();
 		}
 
 		return GOLIOTH_SETTINGS_SUCCESS;
