@@ -7,14 +7,18 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(app_settings, LOG_LEVEL_DBG);
 
-#include <net/golioth/settings.h>
-#include "app_settings.h"
+#include <golioth/client.h>
+#include <golioth/settings.h>
 #include "main.h"
-
-static struct golioth_client *client;
+#include "app_settings.h"
 
 static int32_t _loop_delay_s = 60;
 static uint16_t _adc_floor[2] = {0, 0};
+
+#define LOOP_DELAY_S_MAX 43200
+#define LOOP_DELAY_S_MIN 0
+#define ADC_FLOOR_MIN 0
+#define ADC_FLOOR_MAX 65535
 
 int32_t get_loop_delay_s(void)
 {
@@ -30,90 +34,71 @@ uint16_t get_adc_floor(uint8_t ch_num)
 	}
 }
 
-enum golioth_settings_status on_setting(const char *key, const struct golioth_settings_value *value)
+static enum golioth_settings_status on_loop_delay_setting(int32_t new_value, void *arg)
 {
-	LOG_DBG("Received setting: key = %s, type = %d", key, value->type);
-
-	if (strcmp(key, "LOOP_DELAY_S") == 0) {
-		/* This setting is expected to be numeric, return an error if it's not */
-		if (value->type != GOLIOTH_SETTINGS_VALUE_TYPE_INT64) {
-			return GOLIOTH_SETTINGS_VALUE_FORMAT_NOT_VALID;
-		}
-
-		/* Limit to 12 hour max delay: [1, 43200] */
-		if (value->i64 < 1 || value->i64 > 43200) {
-			return GOLIOTH_SETTINGS_VALUE_OUTSIDE_RANGE;
-		}
-
-		/* Only update if value has changed */
-		if (_loop_delay_s == (int32_t)value->i64) {
-			LOG_DBG("Received LOOP_DELAY_S already matches local value.");
-		} else {
-			_loop_delay_s = (int32_t)value->i64;
-			LOG_INF("Set loop delay to %d seconds", _loop_delay_s);
-
-			wake_system_thread();
-		}
-		return GOLIOTH_SETTINGS_SUCCESS;
-	}
-
-	if ((strcmp(key, "ADC_FLOOR_CH0") == 0) || (strcmp(key, "ADC_FLOOR_CH1") == 0)) {
-		/* This setting is expected to be numeric, return an error if it's not */
-		if (value->type != GOLIOTH_SETTINGS_VALUE_TYPE_INT64) {
-			return GOLIOTH_SETTINGS_VALUE_FORMAT_NOT_VALID;
-		}
-
-		/* Limit to uint16_t: [0, (2**16)-1] */
-		if (value->i64 < 0 || value->i64 > 65535) {
-			return GOLIOTH_SETTINGS_VALUE_OUTSIDE_RANGE;
-		}
-
-		uint8_t ch_num = 0;
-		if (strcmp(key, "ADC_FLOOR_CH1") == 0) {
-			ch_num = 1;
-		}
-
-		/* Only update if value has changed */
-		if (_adc_floor[ch_num] == (int16_t)value->i64) {
-			LOG_DBG("Received ADC_FLOOR_CH%d already matches local value.", ch_num);
-		} else {
-			_adc_floor[ch_num] = (int16_t)value->i64;
-			LOG_INF("Set ADC_FLOOR_CH%d to %d", ch_num, _adc_floor[ch_num]);
-		}
-
-		return GOLIOTH_SETTINGS_SUCCESS;
-	}
-
-	/* If the setting is not recognized, we should return an error */
-	return GOLIOTH_SETTINGS_KEY_NOT_RECOGNIZED;
+	_loop_delay_s = new_value;
+	LOG_INF("Set loop delay to %i seconds", new_value);
+	wake_system_thread();
+	return GOLIOTH_SETTINGS_SUCCESS;
 }
 
-int app_settings_init(struct golioth_client *state_client)
+static enum golioth_settings_status on_adc_floor_setting(int32_t new_value, void *arg)
 {
-	client = state_client;
-	int err = app_settings_register(client);
+	size_t ch_num = (size_t) arg;
 
-	return err;
+	if (ch_num > 1)
+	{
+		LOG_ERR("Invalid channel number: %d", ch_num);
+		return GOLIOTH_SETTINGS_GENERAL_ERROR;
+	}
+
+	/* Only update if value has changed */
+	if (_adc_floor[ch_num] == new_value) {
+		LOG_DBG("Received ADC_FLOOR_CH%d already matches local value.", ch_num);
+	} else {
+		_adc_floor[ch_num] = new_value;
+		LOG_INF("Set ADC_FLOOR_CH%d to %d", ch_num, _adc_floor[ch_num]);
+	}
+
+	wake_system_thread();
+	return GOLIOTH_SETTINGS_SUCCESS;
 }
 
-int app_settings_observe(void)
+void app_settings_register(struct golioth_client *client)
 {
-	int err = golioth_settings_observe(client);
+	int err;
+	struct golioth_settings *settings = golioth_settings_init(client);
+
+	err = golioth_settings_register_int_with_range(settings,
+							   "LOOP_DELAY_S",
+							   LOOP_DELAY_S_MIN,
+							   LOOP_DELAY_S_MAX,
+							   on_loop_delay_setting,
+							   NULL);
 
 	if (err) {
-		LOG_ERR("Failed to observe settings: %d", err);
+		LOG_ERR("Failed to register loop_delay settings callback: %d", err);
 	}
 
-	return err;
-}
-
-int app_settings_register(struct golioth_client *settings_client)
-{
-	int err = golioth_settings_register_callback(settings_client, on_setting);
+	err = golioth_settings_register_int_with_range(settings,
+							   "ADC_FLOOR_CH0",
+							   ADC_FLOOR_MIN,
+							   ADC_FLOOR_MAX,
+							   on_adc_floor_setting,
+							   (void *) 0);
 
 	if (err) {
-		LOG_ERR("Failed to register settings callback: %d", err);
+		LOG_ERR("Failed to register ADC_FLOOR_CH0 settings callback: %d", err);
 	}
 
-	return err;
+	err = golioth_settings_register_int_with_range(settings,
+							   "ADC_FLOOR_CH1",
+							   ADC_FLOOR_MIN,
+							   ADC_FLOOR_MAX,
+							   on_adc_floor_setting,
+							   (void *) 1);
+
+	if (err) {
+		LOG_ERR("Failed to register ADC_FLOOR_CH1 settings callback: %d", err);
+	}
 }

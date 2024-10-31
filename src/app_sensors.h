@@ -16,7 +16,7 @@
 
 #include <stdint.h>
 #include <zephyr/drivers/spi.h>
-#include <net/golioth/system_client.h>
+#include <golioth/client.h>
 
 extern struct k_sem adc_data_sem;
 
@@ -35,6 +35,13 @@ typedef struct {
 	bool loaded_from_cloud;
 
 } adc_node_t;
+
+void app_work_on_connect(void);
+void app_sensors_read_and_stream(void);
+int get_ontime(struct ontime *ot);
+int reset_cumulative_totals(void);
+void app_sensors_init(void);
+void app_sensors_set_client(struct golioth_client *sensors_client);
 
 /* Ostentus slide labels */
 #define CH0_CUR_LABEL	"Current ch0"
@@ -60,11 +67,5 @@ typedef enum {
 #endif
 	FIRMWARE
 } slide_key;
-
-void app_work_init(struct golioth_client *work_client);
-void app_work_on_connect(void);
-void app_work_sensor_read(void);
-int get_ontime(struct ontime *ot);
-int reset_cumulative_totals(void);
 
 #endif /* __APP_WORK_H__ */

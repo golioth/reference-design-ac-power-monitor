@@ -25,13 +25,16 @@ which the equipment is considered "off" are configurable from the Golioth cloud.
 Local set up
 ************
 
-Do not clone this repo using git. Zephyr's ``west`` meta tool should be used to
-set up your local workspace.
+.. pull-quote::
+   [!IMPORTANT]
+
+   Do not clone this repo using git. Zephyr's ``west`` meta tool should be used to
+   set up your local workspace.
 
 Install the Python virtual environment (recommended)
 ====================================================
 
-.. code-block:: console
+.. code-block:: shell
 
    cd ~
    mkdir golioth-reference-design-ac-power-monitor
@@ -42,7 +45,7 @@ Install the Python virtual environment (recommended)
 Use ``west`` to initialize and install
 ======================================
 
-.. code-block:: console
+.. code-block:: shell
 
    cd ~/golioth-reference-design-ac-power-monitor
    west init -m git@github.com:golioth/reference-design-ac-power-monitor.git .
@@ -50,36 +53,59 @@ Use ``west`` to initialize and install
    west zephyr-export
    pip install -r deps/zephyr/scripts/requirements.txt
 
-This will also install the `golioth-zephyr-boards`_ definitions for the Golioth
-Aludel-Mini.
-
 Building the application
 ************************
 
-Build Zephyr sample application for Golioth Aludel-Mini
-(``aludel_mini_v1_sparkfun9160_ns``) from the top level of your project. After a
+Build the Zephyr sample application for the `Nordic nRF9160 DK`_
+(``nrf9160dk_nrf9160_ns``) from the top level of your project. After a
 successful build you will see a new ``build`` directory. Note that any changes
-(and git commmits) to the project itself will be inside the ``app`` folder. The
+(and git commits) to the project itself will be inside the ``app`` folder. The
 ``build`` and ``deps`` directories being one level higher prevents the repo from
 cataloging all of the changes to the dependencies and the build (so no
-``.gitignore`` is needed)
+``.gitignore`` is needed).
 
-During building, replace ``<your.semantic.version>`` to utilize the DFU
-functionality on this Reference Design.
+Prior to building, update ``VERSION`` file to reflect the firmware version number you want to assign
+to this build. Then run the following commands to build and program the firmware onto the device.
 
-.. code-block:: console
 
-   $ (.venv) west build -b aludel_mini_v1_sparkfun9160_ns app -- -DCONFIG_MCUBOOT_IMAGE_VERSION=\"<your.semantic.version>\"
+.. pull-quote::
+   [!IMPORTANT]
+
+   You must perform a pristine build (use ``-p`` or remove the ``build`` directory)
+   after changing the firmware version number in the ``VERSION`` file for the change to take effect.
+
+.. code-block:: text
+
+   $ (.venv) west build -p -b nrf9160dk/nrf9160/ns --sysbuild app
    $ (.venv) west flash
 
 Configure PSK-ID and PSK using the device shell based on your Golioth
 credentials and reboot:
 
-.. code-block:: console
+.. code-block:: text
 
    uart:~$ settings set golioth/psk-id <my-psk-id@my-project>
    uart:~$ settings set golioth/psk <my-psk>
    uart:~$ kernel reboot cold
+
+Add Pipeline to Golioth
+***********************
+
+Golioth uses `Pipelines`_ to route stream data. This gives you flexibility to change your data
+routing without requiring updated device firmware.
+
+Whenever sending stream data, you must enable a pipeline in your Golioth project to configure how
+that data is handled. Add the contents of ``pipelines/cbor-to-lightdb.yml`` as a new pipeline as
+follows (note that this is the default pipeline for new projects and may already be present):
+
+   1. Navigate to your project on the Golioth web console.
+   2. Select ``Pipelines`` from the left sidebar and click the ``Create`` button.
+   3. Give your new pipeline a name and paste the pipeline configuration into the editor.
+   4. Click the toggle in the bottom right to enable the pipeline and then click ``Create``.
+
+All data streamed to Golioth in CBOR format will now be routed to LightDB Stream and may be viewed
+using the web console. You may change this behavior at any time without updating firmware simply by
+editing this pipeline entry.
 
 Golioth Features
 ****************
@@ -101,7 +127,6 @@ The following settings should be set in the Device Settings menu of the
 `Golioth Console`_.
 
 ``LOOP_DELAY_S``
-
    Adjusts the delay between sensor readings. Set to an integer value (seconds).
 
    Default value is ``60`` seconds.
@@ -114,7 +139,6 @@ The following settings should be set in the Device Settings menu of the
    considered "on".
 
    Default values are ``0``
-
 
 Remote Procedure Call (RPC) Service
 ===================================
@@ -205,7 +229,7 @@ from above to provision this board after programming the firmware.)
 
 .. code-block:: text
 
-   $ (.venv) west build -p -b nrf9160dk_nrf9160_ns app -- -DCONFIG_MCUBOOT_IMAGE_VERSION=\"<your.semantic.version>\"
+   $ (.venv) west build -p -b nrf9160dk/nrf9160/ns --sysbuild app
    $ (.venv) west flash
 
 External Libraries
@@ -219,10 +243,15 @@ from ``west.yml`` and remove the includes/function calls from the C code.
   Aludel-Mini
 * `libostentus`_ is a helper library for controlling the Ostentus ePaper
   faceplate
+* `zephyr-network-info`_ is a helper library for querying, formatting, and returning network
+  connection information via Zephyr log or Golioth RPC
 
 
 .. _the Golioth DC Power Monitor project page: https://projects.golioth.io/reference-designs/iot-ac-power-monitor/
 .. _Golioth Console: https://console.golioth.io
 .. _Nordic nRF9160 DK: https://www.nordicsemi.com/Products/Development-hardware/nrf9160-dk
+.. _Pipelines: https://docs.golioth.io/data-routing
+.. _the Golioth Docs OTA Firmware Upgrade page: https://docs.golioth.io/firmware/golioth-firmware-sdk/firmware-upgrade/firmware-upgrade
 .. _golioth-zephyr-boards: https://github.com/golioth/golioth-zephyr-boards
 .. _libostentus: https://github.com/golioth/libostentus
+.. _zephyr-network-info: https://github.com/golioth/zephyr-network-info
