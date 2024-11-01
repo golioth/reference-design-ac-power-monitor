@@ -14,6 +14,8 @@ LOG_MODULE_REGISTER(app_rpc, LOG_LEVEL_DBG);
 #include <zephyr/sys/reboot.h>
 
 #include <network_info.h>
+#include "main.h"
+#include "app_sensors.h"
 #include "app_rpc.h"
 
 static void reboot_work_handler(struct k_work *work)
@@ -96,6 +98,17 @@ static enum golioth_rpc_status on_reboot(zcbor_state_t *request_params_array,
 	return GOLIOTH_RPC_OK;
 }
 
+static enum golioth_rpc_status on_reset_cumulative(zcbor_state_t *request_params_array,
+						   zcbor_state_t *response_detail_map,
+						   void *callback_arg)
+{
+	LOG_INF("Request to reset cumulative values received. Processing now.");
+	reset_cumulative_totals();
+	wake_system_thread();
+
+	return GOLIOTH_RPC_OK;
+}
+
 static void rpc_log_if_register_failure(int err)
 {
 	if (err) {
@@ -113,6 +126,9 @@ void app_rpc_register(struct golioth_client *client)
 	rpc_log_if_register_failure(err);
 
 	err = golioth_rpc_register(rpc, "reboot", on_reboot, NULL);
+	rpc_log_if_register_failure(err);
+
+	err = golioth_rpc_register(rpc, "reset_cumulative", on_reset_cumulative, NULL);
 	rpc_log_if_register_failure(err);
 
 	err = golioth_rpc_register(rpc, "set_log_level", on_set_log_level, NULL);

@@ -152,6 +152,10 @@ The following RPCs can be initiated in the Remote Procedure Call menu of the
 ``reboot``
    Reboot the system.
 
+``reset_cumulative``
+   Reset the cumulative "on time" values stored on the device. After executing, the device will
+   update the cloud's ``state/cumulative`` values using the LightDB State service.
+
 ``set_log_level``
    Set the log level.
 
@@ -188,15 +192,11 @@ endpoint.
 Stateful Data (LightDB State)
 -----------------------------
 
-The concept of Digital Twin is demonstrated with the LightDB State via the ``desired`` and
-``actual`` endpoints.
+The concept of Digital Twin is demonstrated with the LightDB State via the ``state`` path.
 
 .. code-block:: json
 
    {
-     "desired": {
-       "reset_cumulative": false
-     },
      "state": {
        "cumulative": {
          "ch0": 138141,
@@ -209,12 +209,8 @@ The concept of Digital Twin is demonstrated with the LightDB State via the ``des
      }
    }
 
-* ``desired.reset_cumulative`` values may be changed from the cloud side. The device will recognize
-  when this endpoint is set to ``true``, clearing the stored ``cumulative`` values and writing the
-  ``reset_cumulative`` value to ``false`` to indicate the operation was completed.
-
-* ``actual`` values will be updated by the device. The cloud may read the ``actual`` endpoints to
-  determine device status, but only the device should ever write to the ``actual`` endpoints.
+* ``state`` values will be updated by the device. The cloud may read the ``state`` path to
+  determine device status, but only the device should ever write to that path.
 
 Hardware Variations
 *******************

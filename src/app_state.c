@@ -12,6 +12,7 @@ LOG_MODULE_REGISTER(app_state, LOG_LEVEL_DBG);
 #include <zcbor_decode.h>
 #include <zcbor_encode.h>
 
+#include "main.h"
 #include "app_sensors.h"
 #include "app_state.h"
 
@@ -19,7 +20,6 @@ LOG_MODULE_REGISTER(app_state, LOG_LEVEL_DBG);
 #define CUMULATIVE_RUNTIME_FMT ",\"cumulative\":{\"ch0\":%lld,\"ch1\":%lld}}"
 #define DEVICE_STATE_FMT LIVE_RUNTIME_FMT "}"
 #define DEVICE_STATE_FMT_CUMULATIVE LIVE_RUNTIME_FMT CUMULATIVE_RUNTIME_FMT
-#define DESIRED_RESET_KEY "reset_cumulative"
 
 static struct golioth_client *client;
 static struct ontime ot;
@@ -37,41 +37,6 @@ static void async_handler(struct golioth_client *client,
 	}
 
 	LOG_DBG("State successfully set");
-}
-
-static int app_state_reset_desired(void)
-{
-	int err;
-	uint8_t cbor_payload[32];
-	bool ok;
-
-	LOG_INF("Resetting \"%s\" LightDB State endpoint to defaults.", APP_STATE_DESIRED_ENDP);
-
-	ZCBOR_STATE_E(encoding_state, 16, cbor_payload, sizeof(cbor_payload), 0);
-	ok = zcbor_map_start_encode(encoding_state, 2) &&
-	     zcbor_tstr_put_lit(encoding_state, DESIRED_RESET_KEY) &&
-	     zcbor_bool_put(encoding_state, false) &&
-	     zcbor_map_end_encode(encoding_state, 2);
-
-	if (!ok) {
-		LOG_ERR("Error encoding CBOR to reset desired endpoint");
-		return -ENODATA;
-	}
-
-	size_t cbor_len = encoding_state->payload - cbor_payload;
-	LOG_HEXDUMP_DBG(cbor_payload, cbor_len, "cbor_payload");
-
-	err = golioth_lightdb_set_async(client,
-					APP_STATE_DESIRED_ENDP,
-					GOLIOTH_CONTENT_TYPE_CBOR,
-					cbor_payload,
-					cbor_len,
-					async_handler,
-					NULL);
-	if (err) {
-		LOG_ERR("Unable to write to LightDB State: %d", err);
-	}
-	return err;
 }
 
 static int app_state_update_actual(void)
@@ -148,75 +113,11 @@ int app_state_report_ontime(adc_node_t *ch0, adc_node_t *ch1)
 	return 0;
 }
 
-static void app_state_desired_handler(struct golioth_client *client,
-				      const struct golioth_response *response,
-				      const char *path,
-				      const uint8_t *payload,
-				      size_t payload_size,
-				      void *arg)
-{
-	if (response->status != GOLIOTH_OK) {
-		LOG_ERR("Failed to receive '%s' endpoint: %d",
-			APP_STATE_DESIRED_ENDP,
-			response->status);
-		return;
-	}
-
-	LOG_HEXDUMP_DBG(payload, payload_size, APP_STATE_DESIRED_ENDP);
-
-	if ((payload_size == 1) && (payload[0] == 0xf6)) {
-		/* This is `null` in CBOR */
-		LOG_ERR("Endpoint is null, resetting desired to defaults");
-		app_state_reset_desired();
-		return;
-	}
-
-	struct zcbor_string key;
-	bool reset_cumulative;
-	bool ok;
-
-	ZCBOR_STATE_D(decoding_state, 1, payload, payload_size, 1, NULL);
-	ok = zcbor_map_start_decode(decoding_state) &&
-	     zcbor_tstr_decode(decoding_state, &key) &&
-	     zcbor_bool_decode(decoding_state, &reset_cumulative) &&
-	     zcbor_map_end_decode(decoding_state);
-
-	if (!ok) {
-		LOG_ERR("ZCBOR Decoding Error");
-		LOG_HEXDUMP_ERR(payload, payload_size, "cbor_payload");
-		app_state_reset_desired();
-		return;
-	}
-
-	if (strncmp(key.value, DESIRED_RESET_KEY, strlen(DESIRED_RESET_KEY)) != 0) {
-		LOG_ERR("Unexpected key received: %.*s", key.len, key.value);
-		app_state_reset_desired();
-		return;
-	}
-
-	LOG_DBG("Decoded: %.*s == %s", key.len, key.value, reset_cumulative ? "true" : "false");
-	if (reset_cumulative) {
-		LOG_INF("Request to reset cumulative values received. Processing now.");
-		reset_cumulative_totals();
-		app_state_reset_desired();
-	}
-}
-
 int app_state_observe(struct golioth_client *state_client)
 {
 	int err;
 
 	client = state_client;
-
-	err = golioth_lightdb_observe_async(client,
-					    APP_STATE_DESIRED_ENDP,
-					    GOLIOTH_CONTENT_TYPE_CBOR,
-					    app_state_desired_handler,
-					    NULL);
-	if (err) {
-		LOG_WRN("failed to observe lightdb path: %d", err);
-		return err;
-	}
 
 	/* This will only run once. It updates the actual state of the device
 	 * with the Golioth servers. Future updates will be sent whenever
