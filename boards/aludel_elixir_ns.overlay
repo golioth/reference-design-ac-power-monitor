@@ -7,6 +7,10 @@
 		compatible = "golioth,ostentus";
 		reg = <0x12>;
 	};
+};
+
+&mikrobus_spi {
+	status = "okay";
 
 	mcp3201_ch0: mcp3201@0 {
 		compatible = "microchip,mcp3201";
