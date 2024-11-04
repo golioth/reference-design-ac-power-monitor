@@ -7,10 +7,13 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(app_state, LOG_LEVEL_DBG);
 
-#include <net/golioth/system_client.h>
+#include <golioth/client.h>
+#include <golioth/lightdb_state.h>
+#include <zcbor_decode.h>
+#include <zcbor_encode.h>
 
+#include "app_sensors.h"
 #include "app_state.h"
-#include "app_work.h"
 
 #define LIVE_RUNTIME_FMT "{\"live_runtime\":{\"ch0\":%lld,\"ch1\":%lld}"
 #define CUMULATIVE_RUNTIME_FMT ",\"cumulative\":{\"ch0\":%lld,\"ch1\":%lld}}"
@@ -23,16 +26,17 @@ static struct ontime ot;
 
 static K_SEM_DEFINE(update_actual, 0, 1);
 
-static int async_handler(struct golioth_req_rsp *rsp)
+static void async_handler(struct golioth_client *client,
+				       const struct golioth_response *response,
+				       const char *path,
+				       void *arg)
 {
-	if (rsp->err) {
-		LOG_WRN("Failed to set state: %d", rsp->err);
-		return rsp->err;
+	if (response->status != GOLIOTH_OK) {
+		LOG_WRN("Failed to set state: %d", response->status);
+		return;
 	}
 
 	LOG_DBG("State successfully set");
-
-	return 0;
 }
 
 static int app_state_reset_desired(void)
@@ -54,26 +58,23 @@ static int app_state_reset_desired(void)
 		return -ENODATA;
 	}
 
-	LOG_HEXDUMP_DBG(cbor_payload, encoding_state->payload - cbor_payload, "cbor_payload");
+	size_t cbor_len = encoding_state->payload - cbor_payload;
+	LOG_HEXDUMP_DBG(cbor_payload, cbor_len, "cbor_payload");
 
-	err = golioth_lightdb_set_cb(client, APP_STATE_DESIRED_ENDP, GOLIOTH_CONTENT_FORMAT_APP_CBOR,
-				     cbor_payload, (encoding_state->payload - cbor_payload),
-				     async_handler, NULL);
+	err = golioth_lightdb_set_async(client,
+					APP_STATE_DESIRED_ENDP,
+					GOLIOTH_CONTENT_TYPE_CBOR,
+					cbor_payload,
+					cbor_len,
+					async_handler,
+					NULL);
 	if (err) {
 		LOG_ERR("Unable to write to LightDB State: %d", err);
-		return err;
 	}
-
-	return 0;
+	return err;
 }
 
-void app_state_init(struct golioth_client *state_client)
-{
-	client = state_client;
-	k_sem_give(&update_actual);
-}
-
-int app_state_update_actual(void)
+static int app_state_update_actual(void)
 {
 	int err;
 	char sbuf[sizeof(DEVICE_STATE_FMT) + 10]; /* space for uint16 values */
@@ -86,8 +87,13 @@ int app_state_update_actual(void)
 	}
 
 	snprintk(sbuf, sizeof(sbuf), DEVICE_STATE_FMT, ot.ch0, ot.ch1);
-	err = golioth_lightdb_set_cb(client, APP_STATE_ACTUAL_ENDP, GOLIOTH_CONTENT_FORMAT_APP_JSON,
-				     sbuf, strlen(sbuf), async_handler, NULL);
+	err = golioth_lightdb_set_async(client,
+					APP_STATE_ACTUAL_ENDP,
+					GOLIOTH_CONTENT_TYPE_JSON,
+					sbuf,
+					strlen(sbuf),
+					async_handler,
+					NULL);
 	if (err) {
 		LOG_ERR("Unable to write to LightDB State: %d", err);
 	}
@@ -114,9 +120,14 @@ int app_state_report_ontime(adc_node_t *ch0, adc_node_t *ch1)
 			app_work_on_connect();
 		}
 
-		err = golioth_lightdb_set_cb(client, APP_STATE_ACTUAL_ENDP, GOLIOTH_CONTENT_FORMAT_APP_JSON,
-					     json_buf, strlen(json_buf), async_handler, NULL);
 
+		err = golioth_lightdb_set_async(client,
+						APP_STATE_ACTUAL_ENDP,
+						GOLIOTH_CONTENT_TYPE_JSON,
+						json_buf,
+						strlen(json_buf),
+						async_handler,
+						NULL);
 		if (err) {
 			LOG_ERR("Failed to send sensor data to Golioth: %d", err);
 			k_sem_give(&adc_data_sem);
@@ -137,27 +148,34 @@ int app_state_report_ontime(adc_node_t *ch0, adc_node_t *ch1)
 	return 0;
 }
 
-int app_state_desired_handler(struct golioth_req_rsp *rsp)
+static void app_state_desired_handler(struct golioth_client *client,
+				      const struct golioth_response *response,
+				      const char *path,
+				      const uint8_t *payload,
+				      size_t payload_size,
+				      void *arg)
 {
-	if (rsp->err) {
-		LOG_ERR("Failed to receive '%s' endpoint: %d", APP_STATE_DESIRED_ENDP, rsp->err);
-		return rsp->err;
+	if (response->status != GOLIOTH_OK) {
+		LOG_ERR("Failed to receive '%s' endpoint: %d",
+			APP_STATE_DESIRED_ENDP,
+			response->status);
+		return;
 	}
 
-	LOG_HEXDUMP_DBG(rsp->data, rsp->len, APP_STATE_DESIRED_ENDP);
+	LOG_HEXDUMP_DBG(payload, payload_size, APP_STATE_DESIRED_ENDP);
 
-	if ((rsp->len == 1) && (rsp->data[0] == 0xf6)) {
+	if ((payload_size == 1) && (payload[0] == 0xf6)) {
 		/* This is `null` in CBOR */
 		LOG_ERR("Endpoint is null, resetting desired to defaults");
 		app_state_reset_desired();
-		return -EFAULT;
+		return;
 	}
 
 	struct zcbor_string key;
 	bool reset_cumulative;
 	bool ok;
 
-	ZCBOR_STATE_D(decoding_state, 1, rsp->data, rsp->len, 1);
+	ZCBOR_STATE_D(decoding_state, 1, payload, payload_size, 1, NULL);
 	ok = zcbor_map_start_decode(decoding_state) &&
 	     zcbor_tstr_decode(decoding_state, &key) &&
 	     zcbor_bool_decode(decoding_state, &reset_cumulative) &&
@@ -165,15 +183,15 @@ int app_state_desired_handler(struct golioth_req_rsp *rsp)
 
 	if (!ok) {
 		LOG_ERR("ZCBOR Decoding Error");
-		LOG_HEXDUMP_ERR(rsp->data, rsp->len, "cbor_payload");
+		LOG_HEXDUMP_ERR(payload, payload_size, "cbor_payload");
 		app_state_reset_desired();
-		return -ENOTSUP;
+		return;
 	}
 
 	if (strncmp(key.value, DESIRED_RESET_KEY, strlen(DESIRED_RESET_KEY)) != 0) {
 		LOG_ERR("Unexpected key received: %.*s", key.len, key.value);
 		app_state_reset_desired();
-		return -ENODATA;
+		return;
 	}
 
 	LOG_DBG("Decoded: %.*s == %s", key.len, key.value, reset_cumulative ? "true" : "false");
@@ -182,25 +200,29 @@ int app_state_desired_handler(struct golioth_req_rsp *rsp)
 		reset_cumulative_totals();
 		app_state_reset_desired();
 	}
-
-	return 0;
 }
 
-int app_state_observe(void)
+int app_state_observe(struct golioth_client *state_client)
 {
-	int err = golioth_lightdb_observe_cb(client, APP_STATE_DESIRED_ENDP, GOLIOTH_CONTENT_FORMAT_APP_CBOR,
-					     app_state_desired_handler, NULL);
+	int err;
+
+	client = state_client;
+
+	err = golioth_lightdb_observe_async(client,
+					    APP_STATE_DESIRED_ENDP,
+					    GOLIOTH_CONTENT_TYPE_CBOR,
+					    app_state_desired_handler,
+					    NULL);
 	if (err) {
 		LOG_WRN("failed to observe lightdb path: %d", err);
+		return err;
 	}
 
 	/* This will only run once. It updates the actual state of the device
 	 * with the Golioth servers. Future updates will be sent whenever
 	 * changes occur.
 	 */
-	if (k_sem_take(&update_actual, K_NO_WAIT) == 0) {
-		err = app_state_update_actual();
-	}
+	err = app_state_update_actual();
 
 	return err;
 }

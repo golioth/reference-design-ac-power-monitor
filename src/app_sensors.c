@@ -5,22 +5,27 @@
  */
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(app_work, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(app_sensors, LOG_LEVEL_DBG);
 
 #include <stdlib.h>
-#include <net/golioth/system_client.h>
+#include <golioth/client.h>
+#include <golioth/lightdb_state.h>
+#include <golioth/payload_utils.h>
+#include <golioth/stream.h>
+#include <zcbor_decode.h>
+#include <zcbor_encode.h>
 #include <zephyr/drivers/spi.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/sensor.h>
 
-#include "app_work.h"
+#include "app_sensors.h"
 #include "app_state.h"
 #include "app_settings.h"
 
 #ifdef CONFIG_LIB_OSTENTUS
 #include <libostentus.h>
+static const struct device *o_dev = DEVICE_DT_GET_ANY(golioth_ostentus);
 #endif
-
 #ifdef CONFIG_ALUDEL_BATTERY_MONITOR
 #include "battery_monitor/battery.h"
 #endif
@@ -79,14 +84,15 @@ int get_ontime(struct ontime *ot)
 }
 
 /* Callback for LightDB Stream */
-static int async_error_handler(struct golioth_req_rsp *rsp)
+static void async_error_handler(struct golioth_client *client,
+				const struct golioth_response *response,
+				const char *path,
+				void *arg)
 {
-	if (rsp->err) {
-		LOG_ERR("Async task failed: %d", rsp->err);
-		return rsp->err;
+	if (response->status != GOLIOTH_OK) {
+		LOG_ERR("Async task failed: %d", response->status);
+		return;
 	}
-
-	return 0;
 }
 
 /*
@@ -167,8 +173,13 @@ static int push_adc_to_golioth(uint16_t ch0_data, uint16_t ch1_data)
 
 	snprintk(json_buf, sizeof(json_buf), JSON_FMT, ch0_data, ch1_data);
 
-	err = golioth_stream_push_cb(client, ADC_STREAM_ENDP, GOLIOTH_CONTENT_FORMAT_APP_JSON,
-				     json_buf, strlen(json_buf), async_error_handler, NULL);
+	err = golioth_stream_set_async(client,
+				       ADC_STREAM_ENDP,
+				       GOLIOTH_CONTENT_TYPE_JSON,
+				       json_buf,
+				       strlen(json_buf),
+				       async_error_handler,
+				       NULL);
 	if (err) {
 		LOG_ERR("Failed to send sensor data to Golioth: %d", err);
 		return err;
@@ -222,11 +233,28 @@ int reset_cumulative_totals(void)
 	return -EACCES;
 }
 
-static int get_cumulative_handler(struct golioth_req_rsp *rsp)
+static void get_cumulative_handler(struct golioth_client *client,
+                                     const struct golioth_response *response,
+                                     const char *path,
+                                     const uint8_t *payload,
+                                     size_t payload_size,
+                                     void *arg)
 {
-	if (rsp->err) {
-		LOG_ERR("Failed to receive cumulative value: %d", rsp->err);
-		return rsp->err;
+	if (response->status != GOLIOTH_OK)
+	{
+		LOG_WRN("Failed to get counter (async): %d", response->status);
+		return;
+	}
+
+	if ((payload_size == 1) && (payload[0] == 0xf6)) {
+		/* 0xf6 is `null` in CBOR */
+		LOG_WRN("Cumulative state is null, use runtime as cumulative on next update.");
+		if (k_sem_take(&adc_data_sem, K_MSEC(300)) == 0) {
+			adc_ch0.loaded_from_cloud = true;
+			adc_ch1.loaded_from_cloud = true;
+			k_sem_give(&adc_data_sem);
+		}
+		return;
 	}
 
 	uint64_t decoded_ch0 = 0;
@@ -238,18 +266,7 @@ static int get_cumulative_handler(struct golioth_req_rsp *rsp)
 	uint64_t data;
 	bool ok;
 
-	if ((rsp->len == 1) && (rsp->data[0] == 0xf6)) {
-		/* This is `null` in CBOR */
-		LOG_WRN("Cumulative state is null, use runtime as cumulative on next update.");
-		if (k_sem_take(&adc_data_sem, K_MSEC(300)) == 0) {
-			adc_ch0.loaded_from_cloud = true;
-			adc_ch1.loaded_from_cloud = true;
-			k_sem_give(&adc_data_sem);
-		}
-		return 0;
-	}
-
-	ZCBOR_STATE_D(decoding_state, 1, rsp->data, rsp->len, 1);
+	ZCBOR_STATE_D(decoding_state, 1, payload, payload_size, 1, NULL);
 	ok = zcbor_map_start_decode(decoding_state);
 	if (!ok) {
 		goto cumulative_decode_error;
@@ -284,14 +301,12 @@ static int get_cumulative_handler(struct golioth_req_rsp *rsp)
 			adc_ch1.loaded_from_cloud = true;
 			k_sem_give(&adc_data_sem);
 		}
-		return 0;
+		return;
 	}
 
 cumulative_decode_error:
 	LOG_ERR("ZCBOR Decoding Error");
-	LOG_HEXDUMP_ERR(rsp->data, rsp->len, "cbor_payload");
-
-	return -EBADMSG;
+	LOG_HEXDUMP_ERR(payload, payload_size, "cbor_payload");
 }
 
 void app_work_on_connect(void)
@@ -299,43 +314,36 @@ void app_work_on_connect(void)
 	/* Get cumulative "on" time from Golioth LightDB State */
 	int err;
 
-	err = golioth_lightdb_get_cb(client, ADC_CUMULATIVE_ENDP, GOLIOTH_CONTENT_FORMAT_APP_CBOR,
-				     get_cumulative_handler, NULL);
+	err = golioth_lightdb_get_async(client,
+					ADC_CUMULATIVE_ENDP,
+					GOLIOTH_CONTENT_TYPE_CBOR,
+					get_cumulative_handler,
+					NULL);
 	if (err) {
 		LOG_WRN("failed to get cumulative channel data from LightDB: %d", err);
 	}
 }
 
-void app_work_init(struct golioth_client *work_client)
-{
-	client = work_client;
-	k_sem_init(&adc_data_sem, 0, 1);
-
-
-	LOG_DBG("Setting up current clamp ADCs...");
-	LOG_DBG("mcp3201_ch0.bus = %p", adc_ch0.spi.bus);
-	LOG_DBG("mcp3201_ch0.config.cs->gpio.port = %p", adc_ch0.spi.config.cs->gpio.port);
-	LOG_DBG("mcp3201_ch0.config.cs->gpio.pin = %u", adc_ch0.spi.config.cs->gpio.pin);
-	LOG_DBG("mcp3201_ch1.bus = %p", adc_ch1.spi.bus);
-	LOG_DBG("mcp3201_ch1.config.cs->gpio.port = %p", adc_ch1.spi.config.cs->gpio.port);
-	LOG_DBG("mcp3201_ch1.config.cs->gpio.pin = %u", adc_ch1.spi.config.cs->gpio.pin);
-
-	/* Semaphores to handle data access */
-	k_sem_give(&adc_data_sem);
-}
-
 /* this will be called by the main() loop */
 /* do all of your work here! */
-void app_work_sensor_read(void)
+void app_sensors_read_and_stream(void)
 {
 	struct mcp3201_data ch0_data, ch1_data;
 
+	/* Golioth custom hardware for demos */
 	IF_ENABLED(CONFIG_ALUDEL_BATTERY_MONITOR, (
-		read_and_report_battery();
-		slide_set(BATTERY_V, get_batt_v_str(), strlen(get_batt_v_str()));
-		slide_set(BATTERY_LVL, get_batt_lvl_str(), strlen(get_batt_lvl_str()));
+		read_and_report_battery(client);
+		IF_ENABLED(CONFIG_LIB_OSTENTUS, (
+			ostentus_slide_set(o_dev,
+					   BATTERY_V,
+					   get_batt_v_str(),
+					   strlen(get_batt_v_str()));
+			ostentus_slide_set(o_dev,
+					   BATTERY_LVL,
+					   get_batt_lvl_str(),
+					   strlen(get_batt_lvl_str()));
+		));
 	));
-
 
 	get_adc_reading(&adc_ch0, &ch0_data);
 	get_adc_reading(&adc_ch1, &ch1_data);
@@ -363,20 +371,42 @@ void app_work_sensor_read(void)
 		 */
 		char json_buf[128];
 
-		snprintk(json_buf, sizeof(json_buf), "%.2f A", (ch0_data.val1 * ADC_RAW_TO_AMP));
-		slide_set(CH0_CURRENT, json_buf, strlen(json_buf));
+		snprintk(json_buf, sizeof(json_buf), "%.2f A", (double)(ch0_data.val1 * ADC_RAW_TO_AMP));
+		ostentus_slide_set(o_dev, CH0_CURRENT, json_buf, strlen(json_buf));
 
-		snprintk(json_buf, sizeof(json_buf), "%.2f A", (ch1_data.val1 * ADC_RAW_TO_AMP));
-		slide_set(CH1_CURRENT, json_buf, strlen(json_buf));
+		snprintk(json_buf, sizeof(json_buf), "%.2f A", (double)(ch1_data.val1 * ADC_RAW_TO_AMP));
+		ostentus_slide_set(o_dev, CH1_CURRENT, json_buf, strlen(json_buf));
 
 		if (k_sem_take(&adc_data_sem, K_MSEC(300)) == 0) {
 			snprintk(json_buf, sizeof(json_buf), "%lld s", (adc_ch0.runtime / 1000));
-			slide_set(CH0_ONTIME, json_buf, strlen(json_buf));
+			ostentus_slide_set(o_dev, CH0_ONTIME, json_buf, strlen(json_buf));
 
 			snprintk(json_buf, sizeof(json_buf), "%lld s", (adc_ch1.runtime / 1000));
-			slide_set(CH1_ONTIME, json_buf, strlen(json_buf));
+			ostentus_slide_set(o_dev, CH1_ONTIME, json_buf, strlen(json_buf));
 
 			k_sem_give(&adc_data_sem);
 		}
 	));
+}
+
+void app_sensors_init(void)
+{
+	k_sem_init(&adc_data_sem, 0, 1);
+
+
+	LOG_DBG("Setting up current clamp ADCs...");
+	LOG_DBG("mcp3201_ch0.bus = %p", adc_ch0.spi.bus);
+	LOG_DBG("mcp3201_ch0.config.cs.gpio.port = %s", adc_ch0.spi.config.cs.gpio.port->name);
+	LOG_DBG("mcp3201_ch0.config.cs.gpio.pin = %u", adc_ch0.spi.config.cs.gpio.pin);
+	LOG_DBG("mcp3201_ch1.bus = %p", adc_ch1.spi.bus);
+	LOG_DBG("mcp3201_ch1.config.cs.gpio.port = %s", adc_ch1.spi.config.cs.gpio.port->name);
+	LOG_DBG("mcp3201_ch1.config.cs.gpio.pin = %u", adc_ch1.spi.config.cs.gpio.pin);
+
+	/* Semaphores to handle data access */
+	k_sem_give(&adc_data_sem);
+}
+
+void app_sensors_set_client(struct golioth_client *sensors_client)
+{
+	client = sensors_client;
 }

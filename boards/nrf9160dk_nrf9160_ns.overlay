@@ -8,8 +8,6 @@
 	aliases {
 		golioth-led = &led2;
 	};
-
-
 };
 
 &arduino_spi {
@@ -71,4 +69,3 @@
 		};
 	};
 };
-
