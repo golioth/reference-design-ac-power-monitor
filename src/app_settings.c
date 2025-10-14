@@ -16,7 +16,7 @@ static int32_t _loop_delay_s = 60;
 static uint16_t _adc_floor[2] = {0, 0};
 
 #define LOOP_DELAY_S_MAX 43200
-#define LOOP_DELAY_S_MIN 0
+#define LOOP_DELAY_S_MIN 1
 #define ADC_FLOOR_MIN 0
 #define ADC_FLOOR_MAX 65535
 

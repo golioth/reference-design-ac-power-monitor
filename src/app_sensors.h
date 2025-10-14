@@ -63,7 +63,7 @@ typedef enum {
 	CH1_ONTIME,
 #ifdef CONFIG_ALUDEL_BATTERY_MONITOR
 	BATTERY_V,
-	BATTERY_LVL,
+	BATTERY_PCT,
 #endif
 	FIRMWARE
 } slide_key;

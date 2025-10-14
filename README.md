@@ -25,7 +25,6 @@ images](https://github.com/golioth/reference-design-ac-power-monitor/releases).
 
 - Nordic nRF9160-DK
 - Golioth Aludel Elixir
-- Golioth Aludel Mini
 
 ### Additional Sensors/Components
 
@@ -48,8 +47,8 @@ This app implements:
 
 ### Settings Service
 
-The following settings should be set in the Device Settings menu of the
-[Golioth Console](https://console.golioth.io).
+The following settings should be set in [the Device Settings menu of the
+Golioth Console](https://console.golioth.io/device-settings).
 
   - `LOOP_DELAY_S`
     Adjusts the delay between sensor readings. Set to an integer value
@@ -66,8 +65,8 @@ The following settings should be set in the Device Settings menu of the
 
 ### Remote Procedure Call (RPC) Service
 
-The following RPCs can be initiated in the Remote Procedure Call menu of
-the [Golioth Console](https://console.golioth.io).
+The following RPCs can be initiated in the Remote Procedure Call tab of
+each device in the [Golioth Console](https://console.golioth.io).
 
   - `get_network_info`
     Query and return network information.
@@ -149,8 +148,6 @@ should ever write to that path.
         }
     }
 }```
-
-## Building the application
 
 ### OTA Firmware Update
 
@@ -243,7 +240,9 @@ folder. The `build` and `deps` directories being one level higher
 prevents the repo from cataloging all of the changes to the dependencies
 and the build (so no `.gitignore` is needed).
 
-### Nordic nRF9160 DK
+Prior to building, update `VERSION` file to reflect the firmware version
+number you want to assign to this build. Then run the following commands
+to build and program the firmware onto the device.
 
 > [!WARNING]
 > You must perform a pristine build (use `-p` or remove the `build`
