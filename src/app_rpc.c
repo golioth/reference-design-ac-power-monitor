@@ -13,7 +13,10 @@ LOG_MODULE_REGISTER(app_rpc, LOG_LEVEL_DBG);
 #include <zephyr/logging/log_ctrl.h>
 #include <zephyr/sys/reboot.h>
 
+#ifdef CONFIG_NETWORK_INFO
 #include <network_info.h>
+#endif
+
 #include "main.h"
 #include "app_sensors.h"
 #include "app_rpc.h"
@@ -38,9 +41,9 @@ static enum golioth_rpc_status on_get_network_info(zcbor_state_t *request_params
 						   zcbor_state_t *response_detail_map,
 						   void *callback_arg)
 {
-	network_info_add_to_map(response_detail_map);
-
-	return GOLIOTH_RPC_OK;
+	COND_CODE_1(CONFIG_NETWORK_INFO,
+		    (network_info_add_to_map(response_detail_map); return GOLIOTH_RPC_OK;),
+		    (return GOLIOTH_RPC_UNIMPLEMENTED););
 }
 
 static enum golioth_rpc_status on_set_log_level(zcbor_state_t *request_params_array,
@@ -89,8 +92,7 @@ static enum golioth_rpc_status on_set_log_level(zcbor_state_t *request_params_ar
 }
 
 static enum golioth_rpc_status on_reboot(zcbor_state_t *request_params_array,
-					 zcbor_state_t *response_detail_map,
-					 void *callback_arg)
+					 zcbor_state_t *response_detail_map, void *callback_arg)
 {
 	/* Use work queue so this RPC can return confirmation to Golioth */
 	k_work_submit(&reboot_work);
@@ -103,9 +105,13 @@ static enum golioth_rpc_status on_reset_cumulative(zcbor_state_t *request_params
 						   void *callback_arg)
 {
 	LOG_INF("Request to reset cumulative values received. Processing now.");
-	reset_cumulative_totals();
-	wake_system_thread();
+	int err = reset_cumulative_totals();
+	if (0 != err)
+	{
+		return GOLIOTH_RPC_PERMISSION_DENIED;
+	}
 
+	wake_system_thread();
 	return GOLIOTH_RPC_OK;
 }
 

@@ -27,7 +27,7 @@ LOG_MODULE_REGISTER(app_sensors, LOG_LEVEL_DBG);
 static const struct device *o_dev = DEVICE_DT_GET_ANY(golioth_ostentus);
 #endif
 #ifdef CONFIG_ALUDEL_BATTERY_MONITOR
-#include "battery_monitor/battery.h"
+#include <battery_monitor.h>
 #endif
 
 #define ADC_RAW_TO_AMP (0.003529412f)
@@ -84,13 +84,12 @@ int get_ontime(struct ontime *ot)
 }
 
 /* Callback for LightDB Stream */
-static void async_error_handler(struct golioth_client *client,
-				const struct golioth_response *response,
-				const char *path,
+static void async_error_handler(struct golioth_client *client, enum golioth_status status,
+				const struct golioth_coap_rsp_code *coap_rsp_code, const char *path,
 				void *arg)
 {
-	if (response->status != GOLIOTH_OK) {
-		LOG_ERR("Async task failed: %d", response->status);
+	if (status != GOLIOTH_OK) {
+		LOG_ERR("Async task failed: %d", status);
 		return;
 	}
 }
@@ -173,19 +172,22 @@ static int push_adc_to_golioth(uint16_t ch0_data, uint16_t ch1_data)
 
 	snprintk(json_buf, sizeof(json_buf), JSON_FMT, ch0_data, ch1_data);
 
-	err = golioth_stream_set_async(client,
-				       ADC_STREAM_ENDP,
-				       GOLIOTH_CONTENT_TYPE_JSON,
-				       json_buf,
-				       strlen(json_buf),
-				       async_error_handler,
-				       NULL);
-	if (err) {
-		LOG_ERR("Failed to send sensor data to Golioth: %d", err);
-		return err;
-	}
+	/* Only stream sensor data if connected */
+	if (golioth_client_is_connected(client)) {
+		err = golioth_stream_set_async(client,
+					ADC_STREAM_ENDP,
+					GOLIOTH_CONTENT_TYPE_JSON,
+					json_buf,
+					strlen(json_buf),
+					async_error_handler,
+					NULL);
+		if (err) {
+			LOG_ERR("Failed to send sensor data to Golioth: %d", err);
+			return err;
+		}
 
-	app_state_report_ontime(&adc_ch0, &adc_ch1);
+		app_state_report_ontime(&adc_ch0, &adc_ch1);
+	}
 
 	return 0;
 }
@@ -233,16 +235,14 @@ int reset_cumulative_totals(void)
 	return -EACCES;
 }
 
-static void get_cumulative_handler(struct golioth_client *client,
-                                     const struct golioth_response *response,
-                                     const char *path,
-                                     const uint8_t *payload,
-                                     size_t payload_size,
-                                     void *arg)
+
+static void get_cumulative_handler(struct golioth_client *client, enum golioth_status status,
+				      const struct golioth_coap_rsp_code *coap_rsp_code,
+				      const char *path, const uint8_t *payload, size_t payload_size,
+				      void *arg)
 {
-	if (response->status != GOLIOTH_OK)
-	{
-		LOG_WRN("Failed to get counter (async): %d", response->status);
+	if (status != GOLIOTH_OK) {
+		LOG_ERR("Failed to receive '%s' endpoint: %d", APP_STATE_DESIRED_ENDP, status);
 		return;
 	}
 
@@ -339,9 +339,9 @@ void app_sensors_read_and_stream(void)
 					   get_batt_v_str(),
 					   strlen(get_batt_v_str()));
 			ostentus_slide_set(o_dev,
-					   BATTERY_LVL,
-					   get_batt_lvl_str(),
-					   strlen(get_batt_lvl_str()));
+					   BATTERY_PCT,
+					   get_batt_pct_str(),
+					   strlen(get_batt_pct_str()));
 		));
 	));
 
